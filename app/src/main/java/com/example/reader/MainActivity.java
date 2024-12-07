@@ -33,19 +33,47 @@ public class MainActivity extends AppCompatActivity {
     private TextView textView;
     private SharedPreferences sharedPreferences;
     private int textSize = 18;
+    private String currentFileContent = ""; // 缓存当前打开的文件内容
+    private Uri currentFileUri = null; // 缓存当前文件路径
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        // 初始化主题
         setAppTheme();
         setContentView(R.layout.activity_main);
 
         initViews();
         requestPermissionsIfNeeded();
+
+        // 如果是从保存的状态恢复，加载保存的内容
+        if (savedInstanceState != null) {
+            currentFileContent = savedInstanceState.getString("current_content", "");
+            textView.setText(currentFileContent);
+        }
     }
 
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        // 在活动被销毁时保存当前内容
+        outState.putString("current_content", textView.getText().toString());
+    }
+    private void toggleNightMode() {
+        boolean isNightMode = sharedPreferences.getBoolean("night_mode", false);
+
+        if (isNightMode) {
+            AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO);
+            sharedPreferences.edit().putBoolean("night_mode", false).apply();
+            Toast.makeText(this, "切换到白天模式", Toast.LENGTH_SHORT).show();
+        } else {
+            AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
+            sharedPreferences.edit().putBoolean("night_mode", true).apply();
+            Toast.makeText(this, "切换到夜间模式", Toast.LENGTH_SHORT).show();
+        }
+
+        // 使用 recreate() 使主题切换生效
+        recreate();
+    }
     private void setAppTheme() {
         sharedPreferences = getSharedPreferences(
                 String.format("%s_preferences", getPackageName()), MODE_PRIVATE);
@@ -128,24 +156,13 @@ public class MainActivity extends AppCompatActivity {
         return super.onOptionsItemSelected(item);
     }
 
-    private void toggleNightMode() {
-        boolean isNightMode = sharedPreferences.getBoolean("night_mode", false);
 
-        if (isNightMode) {
-            AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO);
-            sharedPreferences.edit().putBoolean("night_mode", false).apply();
-            Toast.makeText(this, "切换到白天模式", Toast.LENGTH_SHORT).show();
-        } else {
-            AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
-            sharedPreferences.edit().putBoolean("night_mode", true).apply();
-            Toast.makeText(this, "切换到夜间模式", Toast.LENGTH_SHORT).show();
-        }
-    }
 
     private void initViews() {
         textView = findViewById(R.id.textView);
         scrollView = findViewById(R.id.scrollView);
 
+        // 监听滚动位置，以便在模式切换时恢复滚动位置
         scrollView.getViewTreeObserver().addOnScrollChangedListener(() ->
                 sharedPreferences.edit().putInt("offset", scrollView.getScrollY()).apply());
     }
@@ -174,10 +191,30 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+
         final int offset = sharedPreferences.getInt("offset", 0);
         final int size = sharedPreferences.getInt("size", 18);
 
-        textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, size);
+        // 不要在onResume中尝试读取文件
+    /*
+    if (currentFileContent.isEmpty()) {
+        String savedFileUri = sharedPreferences.getString("file", null);
+        if (savedFileUri != null) {
+            try {
+                currentFileUri = Uri.parse(savedFileUri);
+                currentFileContent = readTextFromUri(currentFileUri);
+                textView.setText(currentFileContent);
+            } catch (IOException e) {
+                Toast.makeText(this, "文件读取失败", Toast.LENGTH_SHORT).show();
+                e.printStackTrace();
+            }
+        }
+    } else {
+        textView.setText(currentFileContent);
+    }
+    */
+
+        textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, size); // 恢复字体大小
         scrollView.post(() -> scrollView.scrollTo(0, offset));
     }
 
@@ -216,6 +253,9 @@ public class MainActivity extends AppCompatActivity {
                 try {
                     String content = readTextFromUri(uri);
                     textView.setText(content);
+                    currentFileContent = content; // 缓存当前打开的文件内容
+                    currentFileUri = uri; // 缓存当前文件路径
+                    // 保存文件URI以便恢复
                     sharedPreferences.edit().putString("file", uri.toString()).apply();
                 } catch (IOException e) {
                     Toast.makeText(this, "文件读取失败", Toast.LENGTH_SHORT).show();
@@ -242,3 +282,4 @@ public class MainActivity extends AppCompatActivity {
         return stringBuilder.toString();
     }
 }
+
